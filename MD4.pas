@@ -9,9 +9,9 @@
 
   MD4 Hash Calculation
 
-  ©František Milt 2015-03-18
+  ©František Milt 2015-04-26
 
-  Version 1.2
+  Version 1.3
 
 ===============================================================================}
 unit MD4;
@@ -243,14 +243,17 @@ procedure BufferMD4(var Hash: TMD4Hash; const Buffer; Size: TSize);
 type
   TChunksArray = Array[0..0] of TChunkBuffer;
 var
-  i:  Integer;
+  i:  TSize;
 begin
-If (Size mod ChunkSize) = 0 then
+If Size > 0 then
   begin
-    For i := 0 to Pred(Size div ChunkSize) do
-      Hash := ChunkHash(Hash,TChunksArray(Buffer)[i]);
-  end
-else raise Exception.CreateFmt('BufferMD4: Buffer size is not divisible by %d.',[ChunkSize]);
+    If (Size mod ChunkSize) = 0 then
+      begin
+        For i := 0 to Pred(Size div ChunkSize) do
+          Hash := ChunkHash(Hash,TChunksArray(Buffer)[i]);
+      end
+    else raise Exception.CreateFmt('BufferMD4: Buffer size is not divisible by %d.',[ChunkSize]);
+  end;
 end;
 
 //------------------------------------------------------------------------------
