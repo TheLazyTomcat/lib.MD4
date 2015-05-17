@@ -292,12 +292,12 @@ LastChunkSize := Size - (Int64(FullChunks) * ChunkSize);
 HelpChunks := Ceil((LastChunkSize + SizeOf(QuadWord) + 1) / ChunkSize);
 HelpChunksBuff := AllocMem(HelpChunks * ChunkSize);
 try
-  Move({%H-}Pointer(PtrUInt(@Buffer) + (FullChunks * ChunkSize))^,HelpChunksBuff^,LastChunkSize);
-  {%H-}PByte(PtrUInt(HelpChunksBuff) + LastChunkSize)^ := $80;
+  Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (FullChunks * ChunkSize))^,HelpChunksBuff^,LastChunkSize);
+  {%H-}PByte({%H-}PtrUInt(HelpChunksBuff) + LastChunkSize)^ := $80;
   {$IFDEF x64}
-  {%H-}PQuadWord(PtrUInt(HelpChunksBuff) + (HelpChunks * ChunkSize) - SizeOf(QuadWord))^ := MessageLength;
+  {%H-}PQuadWord({%H-}PtrUInt(HelpChunksBuff) + (HelpChunks * ChunkSize) - SizeOf(QuadWord))^ := MessageLength;
   {$ELSE}
-  {%H-}PQuadWord(PtrUInt(HelpChunksBuff) + (Int64(HelpChunks) * ChunkSize) - SizeOf(QuadWord))^ := MessageLength;
+  {%H-}PQuadWord({%H-}PtrUInt(HelpChunksBuff) + (Int64(HelpChunks) * ChunkSize) - SizeOf(QuadWord))^ := MessageLength;
   {$ENDIF}
   BufferMD4(Result,HelpChunksBuff^,HelpChunks * ChunkSize);
 finally
@@ -460,7 +460,7 @@ with PMD4Context_Internal(Context)^ do
             BufferMD4(MessageHash,TransferBuffer,ChunkSize);
             RemainingSize := Size - (ChunkSize - TransferSize);
             TransferSize := 0;
-            MD4_Update(Context,{%H-}Pointer(PtrUInt(@Buffer) + (Size - RemainingSize))^,RemainingSize);
+            MD4_Update(Context,{%H-}Pointer({%H-}PtrUInt(@Buffer) + (Size - RemainingSize))^,RemainingSize);
           end
         else
           begin
@@ -481,7 +481,7 @@ with PMD4Context_Internal(Context)^ do
             {$ELSE}
             TransferSize := Size - (Int64(FullChunks) * ChunkSize);
             {$ENDIF}
-            Move({%H-}Pointer(PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize)
+            Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize)
           end;
       end;
   end;
