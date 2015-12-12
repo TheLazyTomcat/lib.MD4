@@ -9,15 +9,33 @@
 
   MD4 Hash Calculation
 
-  ©František Milt 2015-05-06
+  ©František Milt 2015-12-12
 
-  Version 1.3.1
+  Version 1.3.2
 
 ===============================================================================}
 unit MD4;
 
 {$DEFINE LargeBuffer}
-{.$DEFINE UseStringStream}
+
+{$IF defined(CPUX86_64) or defined(CPUX64)}
+  {$DEFINE x64}
+  {$IF not(defined(WINDOWS) or defined(MSWINDOWS))}
+    {$DEFINE PurePascal}
+  {$IFEND}
+{$ELSEIF defined(CPU386)}
+  {$DEFINE x86}
+{$ELSE}    
+  {$DEFINE PurePascal}
+{$IFEND}
+
+{$IF defined(FPC) and not defined(PurePascal)}
+  {$ASMMODE Intel}
+{$IFEND}
+
+{$IFDEF ENDIAN_BIG}
+  {$MESSAGE FATAL 'Big-endian system not supported'}
+{$ENDIF}
 
 {$IFOPT Q+}
   {$DEFINE OverflowCheck}
@@ -26,29 +44,14 @@ unit MD4;
 interface
 
 uses
-  Classes;
+  Classes, AuxTypes;
 
 type
-{$IFDEF FPC}
-  QuadWord = QWord;
-{$ELSE}
-  QuadWord = Int64;
-{$ENDIF}
-  PQuadWord = ^QuadWord;
-
-{$IFDEF x64}
-  PtrUInt = UInt64;
-{$ELSE}
-  PtrUInt = LongWord;
-{$ENDIF}
-
-  TSize = PtrUInt;
-
-  TMD4Hash = Record
-    PartA:  LongWord;
-    PartB:  LongWord;
-    PartC:  LongWord;
-    PartD:  LongWord;
+  TMD4Hash = record
+    PartA:  UInt32;
+    PartB:  UInt32;
+    PartC:  UInt32;
+    PartD:  UInt32;
   end;
   PMD4Hash = ^TMD4Hash;
 
@@ -67,11 +70,11 @@ Function TryStrToMD4(const Str: String; out Hash: TMD4Hash): Boolean;
 Function StrToMD4Def(const Str: String; Default: TMD4Hash): TMD4Hash;
 Function SameMD4(A,B: TMD4Hash): Boolean;
 
-procedure BufferMD4(var Hash: TMD4Hash; const Buffer; Size: TSize); overload;
-Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TSize; MessageLength: QuadWord): TMD4Hash; overload;
-Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TSize): TMD4Hash; overload;
+procedure BufferMD4(var Hash: TMD4Hash; const Buffer; Size: TMemSize); overload;
+Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TMemSize; MessageLength: UInt64): TMD4Hash; overload;
+Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TMemSize): TMD4Hash; overload;
 
-Function BufferMD4(const Buffer; Size: TSize): TMD4Hash; overload;
+Function BufferMD4(const Buffer; Size: TMemSize): TMD4Hash; overload;
 
 Function AnsiStringMD4(const Str: AnsiString): TMD4Hash;
 Function WideStringMD4(const Str: WideString): TMD4Hash;
@@ -86,10 +89,10 @@ type
   TMD4Context = type Pointer;
 
 Function MD4_Init: TMD4Context;
-procedure MD4_Update(Context: TMD4Context; const Buffer; Size: TSize);
-Function MD4_Final(var Context: TMD4Context; const Buffer; Size: TSize): TMD4Hash; overload;
+procedure MD4_Update(Context: TMD4Context; const Buffer; Size: TMemSize);
+Function MD4_Final(var Context: TMD4Context; const Buffer; Size: TMemSize): TMD4Hash; overload;
 Function MD4_Final(var Context: TMD4Context): TMD4Hash; overload;
-Function MD4_Hash(const Buffer; Size: TSize): TMD4Hash;
+Function MD4_Hash(const Buffer; Size: TMemSize): TMD4Hash;
 
 
 implementation
@@ -106,46 +109,44 @@ const
 {$ENDIF}
   BufferSize      = ChunksPerBuffer * ChunkSize;  // size of read buffer
 
-  ShiftCoefs: Array[0..47] of Byte = (
+  ShiftCoefs: array[0..47] of UInt8 = (
     3,  7, 11, 19,  3,  7, 11, 19,  3,  7, 11, 19,  3,  7, 11, 19,
     3,  5,  9, 13,  3,  5,  9, 13,  3,  5,  9, 13,  3,  5,  9, 13,
     3,  9, 11, 15,  3,  9, 11, 15,  3,  9, 11, 15,  3,  9, 11, 15);
 
-  RoundConsts: Array[0..2] of LongWord = ($0, $5A827999, $6ED9EBA1);
+  RoundConsts: array[0..2] of UInt32 = ($0, $5A827999, $6ED9EBA1);
 
-  IndexConsts: Array[0..47] of Byte = (
+  IndexConsts: array[0..47] of UInt8 = (
     0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
     0,  4,  8, 12,  1,  5,  9, 13,  2,  6, 10, 14,  3,  7, 11, 15,
     0,  8,  4, 12,  2, 10,  6, 14,  1,  9,  5, 13,  3, 11,  7, 15);
 
 type
-  TChunkBuffer = Array[0..ChunkSize - 1] of Byte;
+  TChunkBuffer = array[0..ChunkSize - 1] of UInt8;
   PChunkBuffer = ^TChunkBuffer;
 
   TMD4Context_Internal = record
     MessageHash:    TMD4Hash;
-    MessageLength:  QuadWord;
-    TransferSize:   LongWord;
+    MessageLength:  UInt64;
+    TransferSize:   UInt32;
     TransferBuffer: TChunkBuffer;
   end;
   PMD4Context_Internal = ^TMD4Context_Internal;
 
 //==============================================================================
 
-{$IFDEF FPC}{$ASMMODE intel}{$ENDIF}
-Function LeftRotate(Value: LongWord; Shift: Byte): LongWord;{$IFNDEF PurePascal}assembler;{$ENDIF}
-{$IFDEF PurePascal}
-begin
-Shift := Shift and $1F;
-Result := LongWord((Value shl Shift) or (Value shr (32 - Shift)));
-end;
-{$ELSE}
+Function LeftRotate(Value: UInt32; Shift: Byte): UInt32; register; {$IFNDEF PurePascal}assembler;
 asm
 {$IFDEF x64}
     MOV   EAX,  ECX
 {$ENDIF}
     MOV   CL,   DL
     ROL   EAX,  CL
+end;
+{$ELSE}
+begin
+Shift := Shift and $1F;
+Result := UInt32((Value shl Shift) or (Value shr (32 - Shift)));
 end;
 {$ENDIF}
 
@@ -154,10 +155,10 @@ end;
 Function ChunkHash(Hash: TMD4Hash; const Chunk): TMD4Hash;
 var
   i:              Integer;
-  Temp:           LongWord;
-  FuncResult:     LongWord;
-  RoundConstant:  LongWord;
-  ChunkWords:     Array[0..15] of LongWord absolute Chunk;
+  Temp:           UInt32;
+  FuncResult:     UInt32;
+  RoundConstant:  UInt32;
+  ChunkWords:     array[0..15] of UInt32 absolute Chunk;
 begin
 Result := Hash;
 For i := 0 to 47 do
@@ -179,15 +180,15 @@ For i := 0 to 47 do
     Hash.PartD := Hash.PartC;
     Hash.PartC := Hash.PartB;
     {$IFDEF OverflowCheck}{$Q-}{$ENDIF}
-    Hash.PartB := LeftRotate(LongWord(Hash.PartA + FuncResult + ChunkWords[IndexConsts[i]] + RoundConstant), ShiftCoefs[i]);
+    Hash.PartB := LeftRotate(UInt32(Hash.PartA + FuncResult + ChunkWords[IndexConsts[i]] + RoundConstant), ShiftCoefs[i]);
     {$IFDEF OverflowCheck}{$Q+}{$ENDIF}
     Hash.PartA := Temp;
   end;
 {$IFDEF OverflowCheck}{$Q-}{$ENDIF}
-Result.PartA := LongWord(Result.PartA + Hash.PartA);
-Result.PartB := LongWord(Result.PartB + Hash.PartB);
-Result.PartC := LongWord(Result.PartC + Hash.PartC);
-Result.PartD := LongWord(Result.PartD + Hash.PartD);
+Result.PartA := UInt32(Result.PartA + Hash.PartA);
+Result.PartB := UInt32(Result.PartB + Hash.PartB);
+Result.PartC := UInt32(Result.PartC + Hash.PartC);
+Result.PartD := UInt32(Result.PartD + Hash.PartD);
 {$IFDEF OverflowCheck}{$Q+}{$ENDIF}
 end;
 
@@ -195,7 +196,7 @@ end;
 
 Function MD4toStr(Hash: TMD4Hash): String;
 var
-  HashArray:  Array[0..15] of Byte absolute Hash;
+  HashArray:  array[0..15] of UInt8 absolute Hash;
   i:          Integer;
 begin
 Result := StringOfChar('0',32);
@@ -210,7 +211,7 @@ end;
 
 Function StrToMD4(Str: String): TMD4Hash;
 var
-  HashArray:  Array[0..15] of Byte absolute Result;
+  HashArray:  array[0..15] of UInt8 absolute Result;
   i:          Integer;
 begin
 If Length(Str) < 32 then
@@ -252,9 +253,9 @@ end;
 
 //==============================================================================
 
-procedure BufferMD4(var Hash: TMD4Hash; const Buffer; Size: TSize);
+procedure BufferMD4(var Hash: TMD4Hash; const Buffer; Size: TMemSize);
 var
-  i:    TSize;
+  i:    TMemSize;
   Buff: PChunkBuffer;
 begin
 If Size > 0 then
@@ -274,11 +275,11 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TSize; MessageLength: QuadWord): TMD4Hash;
+Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TMemSize; MessageLength: UInt64): TMD4Hash;
 var
-  FullChunks:     TSize;
-  LastChunkSize:  TSize;
-  HelpChunks:     TSize;
+  FullChunks:     TMemSize;
+  LastChunkSize:  TMemSize;
+  HelpChunks:     TMemSize;
   HelpChunksBuff: Pointer;
 begin
 Result := Hash;
@@ -289,15 +290,15 @@ LastChunkSize := Size - (FullChunks * ChunkSize);
 {$ELSE}
 LastChunkSize := Size - (Int64(FullChunks) * ChunkSize);
 {$ENDIF}
-HelpChunks := Ceil((LastChunkSize + SizeOf(QuadWord) + 1) / ChunkSize);
+HelpChunks := Ceil((LastChunkSize + SizeOf(UInt64) + 1) / ChunkSize);
 HelpChunksBuff := AllocMem(HelpChunks * ChunkSize);
 try
   Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (FullChunks * ChunkSize))^,HelpChunksBuff^,LastChunkSize);
-  {%H-}PByte({%H-}PtrUInt(HelpChunksBuff) + LastChunkSize)^ := $80;
+  {%H-}PUInt8({%H-}PtrUInt(HelpChunksBuff) + LastChunkSize)^ := $80;
   {$IFDEF x64}
-  {%H-}PQuadWord({%H-}PtrUInt(HelpChunksBuff) + (HelpChunks * ChunkSize) - SizeOf(QuadWord))^ := MessageLength;
+  {%H-}PUInt64({%H-}PtrUInt(HelpChunksBuff) + (HelpChunks * ChunkSize) - SizeOf(UInt64))^ := MessageLength;
   {$ELSE}
-  {%H-}PQuadWord({%H-}PtrUInt(HelpChunksBuff) + (Int64(HelpChunks) * ChunkSize) - SizeOf(QuadWord))^ := MessageLength;
+  {%H-}PUInt64({%H-}PtrUInt(HelpChunksBuff) + (Int64(HelpChunks) * ChunkSize) - SizeOf(UInt64))^ := MessageLength;
   {$ENDIF}
   BufferMD4(Result,HelpChunksBuff^,HelpChunks * ChunkSize);
 finally
@@ -307,14 +308,14 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TSize): TMD4Hash;
+Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TMemSize): TMD4Hash;
 begin
-Result := LastBufferMD4(Hash,Buffer,Size,Size shl 3);
+Result := LastBufferMD4(Hash,Buffer,Size,UInt64(Size) shl 3);
 end;
 
 //==============================================================================
 
-Function BufferMD4(const Buffer; Size: TSize): TMD4Hash;
+Function BufferMD4(const Buffer; Size: TMemSize): TMD4Hash;
 begin
 Result := LastBufferMD4(InitialMD4,Buffer,Size);
 end;
@@ -322,62 +323,23 @@ end;
 //==============================================================================
 
 Function AnsiStringMD4(const Str: AnsiString): TMD4Hash;
-{$IFDEF UseStringStream}
-var
-  StringStream: TStringStream;
-begin
-StringStream := TStringStream.Create(Str);
-try
-  Result := StreamMD4(StringStream);
-finally
-  StringStream.Free;
-end;
-end;
-{$ELSE}
 begin
 Result := BufferMD4(PAnsiChar(Str)^,Length(Str) * SizeOf(AnsiChar));
 end;
-{$ENDIF}
 
 //------------------------------------------------------------------------------
 
 Function WideStringMD4(const Str: WideString): TMD4Hash;
-{$IFDEF UseStringStream}
-var
-  StringStream: TStringStream;
-begin
-StringStream := TStringStream.Create(Str);
-try
-  Result := StreamMD4(StringStream);
-finally
-  StringStream.Free;
-end;
-end;
-{$ELSE}
 begin
 Result := BufferMD4(PWideChar(Str)^,Length(Str) * SizeOf(WideChar));
 end;
-{$ENDIF}
 
 //------------------------------------------------------------------------------
 
 Function StringMD4(const Str: String): TMD4Hash;
-{$IFDEF UseStringStream}
-var
-  StringStream: TStringStream;
-begin
-StringStream := TStringStream.Create(Str);
-try
-  Result := StreamMD4(StringStream);
-finally
-  StringStream.Free;
-end;
-end;
-{$ELSE}
 begin
 Result := BufferMD4(PChar(Str)^,Length(Str) * SizeOf(Char));
 end;
-{$ENDIF}
 
 //==============================================================================
 
@@ -385,7 +347,7 @@ Function StreamMD4(Stream: TStream; Count: Int64 = -1): TMD4Hash;
 var
   Buffer:         Pointer;
   BytesRead:      Integer;
-  MessageLength:  QuadWord;
+  MessageLength:  UInt64;
 begin
 If Assigned(Stream) then
   begin
@@ -396,7 +358,7 @@ If Assigned(Stream) then
         Stream.Position := 0;
         Count := Stream.Size;
       end;
-    MessageLength := QuadWord(Count shl 3);
+    MessageLength := UInt64(Count shl 3);
     GetMem(Buffer,BufferSize);
     try
       Result := InitialMD4;
@@ -444,10 +406,10 @@ end;
 
 //------------------------------------------------------------------------------
 
-procedure MD4_Update(Context: TMD4Context; const Buffer; Size: TSize);
+procedure MD4_Update(Context: TMD4Context; const Buffer; Size: TMemSize);
 var
-  FullChunks:     TSize;
-  RemainingSize:  TSize;
+  FullChunks:     TMemSize;
+  RemainingSize:  TMemSize;
 begin
 with PMD4Context_Internal(Context)^ do
   begin
@@ -455,7 +417,7 @@ with PMD4Context_Internal(Context)^ do
       begin
         If Size >= (ChunkSize - TransferSize) then
           begin
-            Inc(MessageLength,(ChunkSize - TransferSize) shl 3);
+            Inc(MessageLength,UInt64(ChunkSize - TransferSize) shl 3);
             Move(Buffer,TransferBuffer[TransferSize],ChunkSize - TransferSize);
             BufferMD4(MessageHash,TransferBuffer,ChunkSize);
             RemainingSize := Size - (ChunkSize - TransferSize);
@@ -464,17 +426,17 @@ with PMD4Context_Internal(Context)^ do
           end
         else
           begin
-            Inc(MessageLength,Size shl 3);
+            Inc(MessageLength,UInt64(Size) shl 3);
             Move(Buffer,TransferBuffer[TransferSize],Size);
             Inc(TransferSize,Size);
           end;  
       end
     else
       begin
-        Inc(MessageLength,Size shl 3);
+        Inc(MessageLength,UInt64(Size) shl 3);
         FullChunks := Size div ChunkSize;
         BufferMD4(MessageHash,Buffer,FullChunks * ChunkSize);
-        If TSize(FullChunks * ChunkSize) < Size then
+        If TMemSize(FullChunks * ChunkSize) < Size then
           begin
             {$IFDEF x64}
             TransferSize := Size - (FullChunks * ChunkSize);
@@ -489,7 +451,7 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function MD4_Final(var Context: TMD4Context; const Buffer; Size: TSize): TMD4Hash;
+Function MD4_Final(var Context: TMD4Context; const Buffer; Size: TMemSize): TMD4Hash;
 begin
 MD4_Update(Context,Buffer,Size);
 Result := MD4_Final(Context);
@@ -507,7 +469,7 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function MD4_Hash(const Buffer; Size: TSize): TMD4Hash;
+Function MD4_Hash(const Buffer; Size: TMemSize): TMD4Hash;
 begin
 Result := LastBufferMD4(InitialMD4,Buffer,Size);
 end;
