@@ -9,9 +9,9 @@
 
   MD4 Hash Calculation
 
-  ©František Milt 2015-12-12
+  ©František Milt 2015-12-13
 
-  Version 1.3.2
+  Version 1.3.3
 
 ===============================================================================}
 unit MD4;
@@ -285,21 +285,13 @@ begin
 Result := Hash;
 FullChunks := Size div ChunkSize;
 If FullChunks > 0 then BufferMD4(Result,Buffer,FullChunks * ChunkSize);
-{$IFDEF x64}
-LastChunkSize := Size - (FullChunks * ChunkSize);
-{$ELSE}
-LastChunkSize := Size - (Int64(FullChunks) * ChunkSize);
-{$ENDIF}
+LastChunkSize := Size - (UInt64(FullChunks) * ChunkSize);
 HelpChunks := Ceil((LastChunkSize + SizeOf(UInt64) + 1) / ChunkSize);
 HelpChunksBuff := AllocMem(HelpChunks * ChunkSize);
 try
   Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (FullChunks * ChunkSize))^,HelpChunksBuff^,LastChunkSize);
   {%H-}PUInt8({%H-}PtrUInt(HelpChunksBuff) + LastChunkSize)^ := $80;
-  {$IFDEF x64}
-  {%H-}PUInt64({%H-}PtrUInt(HelpChunksBuff) + (HelpChunks * ChunkSize) - SizeOf(UInt64))^ := MessageLength;
-  {$ELSE}
-  {%H-}PUInt64({%H-}PtrUInt(HelpChunksBuff) + (Int64(HelpChunks) * ChunkSize) - SizeOf(UInt64))^ := MessageLength;
-  {$ENDIF}
+  {%H-}PUInt64({%H-}PtrUInt(HelpChunksBuff) + (UInt64(HelpChunks) * ChunkSize) - SizeOf(UInt64))^ := MessageLength;
   BufferMD4(Result,HelpChunksBuff^,HelpChunks * ChunkSize);
 finally
   FreeMem(HelpChunksBuff,HelpChunks * ChunkSize);
@@ -438,11 +430,7 @@ with PMD4Context_Internal(Context)^ do
         BufferMD4(MessageHash,Buffer,FullChunks * ChunkSize);
         If TMemSize(FullChunks * ChunkSize) < Size then
           begin
-            {$IFDEF x64}
-            TransferSize := Size - (FullChunks * ChunkSize);
-            {$ELSE}
-            TransferSize := Size - (Int64(FullChunks) * ChunkSize);
-            {$ENDIF}
+            TransferSize := Size - (UInt64(FullChunks) * ChunkSize);
             Move({%H-}Pointer({%H-}PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize)
           end;
       end;
