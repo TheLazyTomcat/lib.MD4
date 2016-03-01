@@ -9,9 +9,9 @@
 
   MD4 Hash Calculation
 
-  ©František Milt 2015-12-13
+  ©František Milt 2016-03-01
 
-  Version 1.3.3
+  Version 1.3.4
 
 ===============================================================================}
 unit MD4;
