@@ -98,7 +98,14 @@ Function MD4_Hash(const Buffer; Size: TMemSize): TMD4Hash;
 implementation
 
 uses
-  SysUtils, Math;
+  SysUtils, Math
+  {$IF Defined(FPC) and not Defined(Unicode)}
+  (*
+    If compiler throws error that LazUTF8 unit cannot be found, you have to
+    add LazUtils to required packages (Project > Project Inspector).
+  *)
+  , LazUTF8
+  {$IFEND};
 
 const
   ChunkSize       = 64;                           // 512 bits
@@ -375,7 +382,11 @@ Function FileMD4(const FileName: String): TMD4Hash;
 var
   FileStream: TFileStream;
 begin
+{$IF Defined(FPC) and not Defined(Unicode)}
+FileStream := TFileStream.Create(UTF8ToSys(FileName), fmOpenRead or fmShareDenyWrite);
+{$ELSE}
 FileStream := TFileStream.Create(FileName, fmOpenRead or fmShareDenyWrite);
+{$IFEND}
 try
   Result := StreamMD4(FileStream);
 finally
