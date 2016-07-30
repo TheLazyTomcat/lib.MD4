@@ -9,9 +9,9 @@
 
   MD4 Hash Calculation
 
-  ©František Milt 2016-03-01
+  ©František Milt 2016-07-30
 
-  Version 1.3.4
+  Version 1.3.5
 
 ===============================================================================}
 unit MD4;
@@ -69,6 +69,7 @@ Function StrToMD4(Str: String): TMD4Hash;
 Function TryStrToMD4(const Str: String; out Hash: TMD4Hash): Boolean;
 Function StrToMD4Def(const Str: String; Default: TMD4Hash): TMD4Hash;
 Function SameMD4(A,B: TMD4Hash): Boolean;
+Function BinaryCorrectMD4(Hash: TMD4Hash): TMD4Hash;
 
 procedure BufferMD4(var Hash: TMD4Hash; const Buffer; Size: TMemSize); overload;
 Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TMemSize; MessageLength: UInt64): TMD4Hash; overload;
@@ -98,7 +99,7 @@ Function MD4_Hash(const Buffer; Size: TMemSize): TMD4Hash;
 implementation
 
 uses
-  SysUtils, Math
+  SysUtils, Math, BitOps
   {$IF Defined(FPC) and not Defined(Unicode)}
   (*
     If compiler throws error that LazUTF8 unit cannot be found, you have to
@@ -142,23 +143,6 @@ type
 
 //==============================================================================
 
-Function LeftRotate(Value: UInt32; Shift: Byte): UInt32; register; {$IFNDEF PurePascal}assembler;
-asm
-{$IFDEF x64}
-    MOV   EAX,  ECX
-{$ENDIF}
-    MOV   CL,   DL
-    ROL   EAX,  CL
-end;
-{$ELSE}
-begin
-Shift := Shift and $1F;
-Result := UInt32((Value shl Shift) or (Value shr (32 - Shift)));
-end;
-{$ENDIF}
-
-//------------------------------------------------------------------------------
-
 Function ChunkHash(Hash: TMD4Hash; const Chunk): TMD4Hash;
 var
   i:              Integer;
@@ -187,7 +171,7 @@ For i := 0 to 47 do
     Hash.PartD := Hash.PartC;
     Hash.PartC := Hash.PartB;
     {$IFDEF OverflowCheck}{$Q-}{$ENDIF}
-    Hash.PartB := LeftRotate(UInt32(Hash.PartA + FuncResult + ChunkWords[IndexConsts[i]] + RoundConstant), ShiftCoefs[i]);
+    Hash.PartB := ROL(UInt32(Hash.PartA + FuncResult + ChunkWords[IndexConsts[i]] + RoundConstant), ShiftCoefs[i]);
     {$IFDEF OverflowCheck}{$Q+}{$ENDIF}
     Hash.PartA := Temp;
   end;
@@ -256,6 +240,13 @@ Function SameMD4(A,B: TMD4Hash): Boolean;
 begin
 Result := (A.PartA = B.PartA) and (A.PartB = B.PartB) and
           (A.PartC = B.PartC) and (A.PartD = B.PartD);
+end;
+
+//------------------------------------------------------------------------------
+
+Function BinaryCorrectMD4(Hash: TMD4Hash): TMD4Hash;
+begin
+Result := Hash;
 end;
 
 //==============================================================================
