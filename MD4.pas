@@ -13,6 +13,10 @@
 
   Version 1.3.5
 
+  Dependencies:
+    AuxTypes - github.com/ncs-sniper/Lib.AuxTypes
+    BitOps   - github.com/ncs-sniper/Lib.BitOps
+
 ===============================================================================}
 unit MD4;
 
