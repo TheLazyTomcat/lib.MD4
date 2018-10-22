@@ -9,9 +9,9 @@
 
   MD4 Hash Calculation
 
-  ©František Milt 2017-07-18
+  ©František Milt 2018-10-22
 
-  Version 1.3.6
+  Version 1.3.7
 
   Dependencies:
     AuxTypes    - github.com/ncs-sniper/Lib.AuxTypes
@@ -36,8 +36,16 @@ unit MD4;
 
 {$IFDEF FPC}
   {$MODE ObjFPC}{$H+}
+  {$INLINE ON}
+  {$DEFINE CanInline}
   {$DEFINE FPC_DisableWarns}
   {$MACRO ON}
+{$ELSE}
+  {$IF CompilerVersion >= 17 then}  // Delphi 2005+
+    {$DEFINE CanInline}
+  {$ELSE}
+    {$UNDEF CanInline}
+  {$IFEND}
 {$ENDIF}
 
 interface
@@ -67,8 +75,11 @@ Function MD4toStr(Hash: TMD4Hash): String;
 Function StrToMD4(Str: String): TMD4Hash;
 Function TryStrToMD4(const Str: String; out Hash: TMD4Hash): Boolean;
 Function StrToMD4Def(const Str: String; Default: TMD4Hash): TMD4Hash;
+
+Function CompareMD4(A,B: TMD4Hash): Integer;
 Function SameMD4(A,B: TMD4Hash): Boolean;
-Function BinaryCorrectMD4(Hash: TMD4Hash): TMD4Hash;
+
+Function BinaryCorrectMD4(Hash: TMD4Hash): TMD4Hash;{$IFDEF CanInline} inline; {$ENDIF}
 
 procedure BufferMD4(var Hash: TMD4Hash; const Buffer; Size: TMemSize); overload;
 Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TMemSize; MessageLength: UInt64): TMD4Hash; overload;
@@ -76,9 +87,9 @@ Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TMemSize): TMD4Hash; 
 
 Function BufferMD4(const Buffer; Size: TMemSize): TMD4Hash; overload;
 
-Function AnsiStringMD4(const Str: AnsiString): TMD4Hash;
-Function WideStringMD4(const Str: WideString): TMD4Hash;
-Function StringMD4(const Str: String): TMD4Hash;
+Function AnsiStringMD4(const Str: AnsiString): TMD4Hash;{$IFDEF CanInline} inline; {$ENDIF}
+Function WideStringMD4(const Str: WideString): TMD4Hash;{$IFDEF CanInline} inline; {$ENDIF}
+Function StringMD4(const Str: String): TMD4Hash;{$IFDEF CanInline} inline; {$ENDIF}
 
 Function StreamMD4(Stream: TStream; Count: Int64 = -1): TMD4Hash;
 Function FileMD4(const FileName: String): TMD4Hash;
@@ -239,6 +250,28 @@ Function StrToMD4Def(const Str: String; Default: TMD4Hash): TMD4Hash;
 begin
 If not TryStrToMD4(Str,Result) then
   Result := Default;
+end;
+
+//------------------------------------------------------------------------------
+
+Function CompareMD4(A,B: TMD4Hash): Integer;
+var
+  OverlayA: array[0..15] of UInt8 absolute A;
+  OverlayB: array[0..15] of UInt8 absolute B;
+  i:        Integer;
+begin
+Result := 0;
+For i := Low(OverlayA) to High(OverlayA) do
+  If OverlayA[i] > OverlayB[i] then
+    begin
+      Result := -1;
+      Break;
+    end
+  else If OverlayA[i] < OverlayB[i] then
+    begin
+      Result := 1;
+      Break;
+    end;
 end;
 
 //------------------------------------------------------------------------------
