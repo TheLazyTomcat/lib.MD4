@@ -398,7 +398,8 @@ end;
 
 class Function TMD4Hash.HashEndianness: THashEndianness;
 begin
-Result := heLittle;
+// first byte is most significant
+Result := heBig;
 end;
 
 //------------------------------------------------------------------------------
