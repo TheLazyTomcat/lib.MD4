@@ -7,92 +7,164 @@
 -------------------------------------------------------------------------------}
 {===============================================================================
 
-  MD4 Hash Calculation
+  MD4 calculation
 
-  ©František Milt 2018-10-22
+    Please note that implementation of MD4 is more-or-less just a direct copy
+    of MD5 codebase, only with changed block processing.
 
-  Version 1.3.7
+  Version 1.4 (2020-04-20)
+
+  Last change 2020-04-20
+
+  ©2015-2020 František Milt
+
+  Contacts:
+    František Milt: frantisek.milt@gmail.com
+
+  Support:
+    If you find this code useful, please consider supporting its author(s) by
+    making a small donation using the following link(s):
+
+      https://www.paypal.me/FMilt
+
+  Changelog:
+    For detailed changelog and history please refer to this git repository:
+
+      github.com/TheLazyTomcat/Lib.MD4
 
   Dependencies:
-    AuxTypes    - github.com/ncs-sniper/Lib.AuxTypes
-    StrRect     - github.com/ncs-sniper/Lib.StrRect
-    BitOps      - github.com/ncs-sniper/Lib.BitOps
-  * SimpleCPUID - github.com/ncs-sniper/Lib.SimpleCPUID
+    AuxTypes           - github.com/TheLazyTomcat/Lib.AuxTypes
+    HashBase           - github.com/TheLazyTomcat/Lib.HashBase
+    AuxClasses         - github.com/TheLazyTomcat/Lib.AuxClasses
+    StrRect            - github.com/TheLazyTomcat/Lib.StrRect
+    StaticMemoryStream - github.com/TheLazyTomcat/Lib.StaticMemoryStream
+    BitOps             - github.com/TheLazyTomcat/Lib.BitOps
+  * SimpleCPUID        - github.com/TheLazyTomcat/Lib.SimpleCPUID
 
   SimpleCPUID might not be needed, see BitOps library for details.
 
 ===============================================================================}
 unit MD4;
 
-{$DEFINE LargeBuffer}
-
-{$IFDEF ENDIAN_BIG}
-  {$MESSAGE FATAL 'Big-endian system not supported'}
+{$IFDEF FPC}
+  {$MODE Delphi}
+  {$DEFINE FPC_DisableWarns}
+  {$MACRO ON}
 {$ENDIF}
 
 {$IFOPT Q+}
-  {$DEFINE OverflowCheck}
-{$ENDIF}
-
-{$IFDEF FPC}
-  {$MODE ObjFPC}{$H+}
-  {$INLINE ON}
-  {$DEFINE CanInline}
-  {$DEFINE FPC_DisableWarns}
-  {$MACRO ON}
-{$ELSE}
-  {$IF CompilerVersion >= 17 then}  // Delphi 2005+
-    {$DEFINE CanInline}
-  {$ELSE}
-    {$UNDEF CanInline}
-  {$IFEND}
+  {$DEFINE OverflowChecks}
 {$ENDIF}
 
 interface
 
 uses
-  Classes, AuxTypes;
+  Classes,
+  AuxTypes, HashBase;
 
+{===============================================================================
+    Common types and constants
+===============================================================================}
+{
+  Type TMD4 contains individual bytes of the checksum in the same order as they
+  are presented in its textual representation.
+  
+  Type TMD4Sys has no such guarantee and its internal structure depends on
+  current implementation.
+
+  MD4 does not differ in little and big endian form, as it is not a single
+  quantity, therefore methods like MD4ToLE or MD4ToBE do nothing and are
+  present only for the sake of completeness.
+}
 type
-  TMD4Hash = record
+  TMD4 = array[0..15] of UInt8;
+  PMD4 = ^TMD4;
+
+  TMD4Sys = record
     PartA:  UInt32;
     PartB:  UInt32;
     PartC:  UInt32;
     PartD:  UInt32;
   end;
-  PMD4Hash = ^TMD4Hash;
+  PMD4Sys = ^TMD4Sys;
 
 const
-  InitialMD4: TMD4Hash = (
-    PartA:  $67452301;
-    PartB:  $EFCDAB89;
-    PartC:  $98BADCFE;
-    PartD:  $10325476);
+  InitialMD4: TMD4 = ($01,$23,$45,$67,$89,$AB,$CD,$EF,$FE,$DC,$BA,$98,$76,$54,$32,$10);
+  ZeroMD4:    TMD4 = ($00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00);
 
-  ZeroMD4: TMD4Hash = (PartA: 0; PartB: 0; PartC: 0; PartD: 0);
+type
+  EMD4Exception = class(EHashException);
 
-Function MD4toStr(Hash: TMD4Hash): String;
-Function StrToMD4(Str: String): TMD4Hash;
-Function TryStrToMD4(const Str: String; out Hash: TMD4Hash): Boolean;
-Function StrToMD4Def(const Str: String; Default: TMD4Hash): TMD4Hash;
+  EMD4IncompatibleClass = class(EMD4Exception);
+  EMD4ProcessingError   = class(EMD4Exception);
 
-Function CompareMD4(A,B: TMD4Hash): Integer;
-Function SameMD4(A,B: TMD4Hash): Boolean;
+{-------------------------------------------------------------------------------
+================================================================================
+                                    TMD4Hash
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TMD4Hash - class declaration
+===============================================================================}
+type
+  TMD4Hash = class(TBlockHash)
+  private
+    fMD4: TMD4Sys;
+    Function GetMD4: TMD4;
+  protected
+    procedure ProcessBlock(const Block); override;
+    procedure ProcessFirst(const Block); override;
+    procedure ProcessLast; override;
+    procedure Initialize; override;
+  public
+    class Function MD4ToSys(MD4: TMD4): TMD4Sys; virtual;
+    class Function MD4FromSys(MD4: TMD4Sys): TMD4; virtual;
+    class Function MD4ToLE(MD4: TMD4): TMD4; virtual;
+    class Function MD4ToBE(MD4: TMD4): TMD4; virtual;
+    class Function MD4FromLE(MD4: TMD4): TMD4; virtual;
+    class Function MD4FromBE(MD4: TMD4): TMD4; virtual;
+    class Function HashSize: TMemSize; override;
+    class Function HashName: String; override;
+    class Function HashEndianness: THashEndianness; override;
+    constructor CreateAndInitFrom(Hash: THashBase); overload; override;
+    constructor CreateAndInitFrom(Hash: TMD4); overload; virtual;
+    procedure Init; override;
+    Function Compare(Hash: THashBase): Integer; override;
+    Function AsString: String; override;
+    procedure FromString(const Str: String); override;
+    procedure FromStringDef(const Str: String; const Default: TMD4); reintroduce;
+    procedure SaveToStream(Stream: TStream; Endianness: THashEndianness = heDefault); override;
+    procedure LoadFromStream(Stream: TStream; Endianness: THashEndianness = heDefault); override;
+    property MD4: TMD4 read GetMD4;
+    property MD4Sys: TMD4Sys read fMD4;
+  end;
 
-Function BinaryCorrectMD4(Hash: TMD4Hash): TMD4Hash;{$IFDEF CanInline} inline; {$ENDIF}
+{===============================================================================
+    Backward compatibility functions
+===============================================================================}
 
-procedure BufferMD4(var Hash: TMD4Hash; const Buffer; Size: TMemSize); overload;
-Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TMemSize; MessageLength: UInt64): TMD4Hash; overload;
-Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TMemSize): TMD4Hash; overload;
+Function MD4toStr(MD4: TMD4): String;
+Function StrToMD4(Str: String): TMD4;
+Function TryStrToMD4(const Str: String; out MD4: TMD4): Boolean;
+Function StrToMD4Def(const Str: String; Default: TMD4): TMD4;
 
-Function BufferMD4(const Buffer; Size: TMemSize): TMD4Hash; overload;
+Function CompareMD4(A,B: TMD4): Integer;
+Function SameMD4(A,B: TMD4): Boolean;
 
-Function AnsiStringMD4(const Str: AnsiString): TMD4Hash;{$IFDEF CanInline} inline; {$ENDIF}
-Function WideStringMD4(const Str: WideString): TMD4Hash;{$IFDEF CanInline} inline; {$ENDIF}
-Function StringMD4(const Str: String): TMD4Hash;{$IFDEF CanInline} inline; {$ENDIF}
+Function BinaryCorrectMD4(MD4: TMD4): TMD4;
 
-Function StreamMD4(Stream: TStream; Count: Int64 = -1): TMD4Hash;
-Function FileMD4(const FileName: String): TMD4Hash;
+procedure BufferMD4(var MD4: TMD4; const Buffer; Size: TMemSize); overload;
+Function LastBufferMD4(MD4: TMD4; const Buffer; Size: TMemSize; MessageLength: UInt64): TMD4; overload;
+Function LastBufferMD4(MD4: TMD4; const Buffer; Size: TMemSize): TMD4; overload;
+
+Function BufferMD4(const Buffer; Size: TMemSize): TMD4; overload;
+
+Function AnsiStringMD4(const Str: AnsiString): TMD4;
+Function WideStringMD4(const Str: WideString): TMD4;
+Function StringMD4(const Str: String): TMD4;
+
+Function StreamMD4(Stream: TStream; Count: Int64 = -1): TMD4;
+Function FileMD4(const FileName: String): TMD4;
 
 //------------------------------------------------------------------------------
 
@@ -101,389 +173,648 @@ type
 
 Function MD4_Init: TMD4Context;
 procedure MD4_Update(Context: TMD4Context; const Buffer; Size: TMemSize);
-Function MD4_Final(var Context: TMD4Context; const Buffer; Size: TMemSize): TMD4Hash; overload;
-Function MD4_Final(var Context: TMD4Context): TMD4Hash; overload;
-Function MD4_Hash(const Buffer; Size: TMemSize): TMD4Hash;
+Function MD4_Final(var Context: TMD4Context; const Buffer; Size: TMemSize): TMD4; overload;
+Function MD4_Final(var Context: TMD4Context): TMD4; overload;
+Function MD4_Hash(const Buffer; Size: TMemSize): TMD4;
 
 
 implementation
 
 uses
-  SysUtils, Math, BitOps, StrRect;
+  SysUtils,
+  BitOps;
 
 {$IFDEF FPC_DisableWarns}
   {$DEFINE FPCDWM}
   {$DEFINE W4055:={$WARN 4055 OFF}} // Conversion between ordinals and pointers is not portable
-  {$DEFINE W4056:={$WARN 4056 OFF}} // Conversion between ordinals and pointers is not portable
-  {$PUSH}{$WARN 2005 OFF} // Comment level $1 found
-  {$IF Defined(FPC) and (FPC_FULLVERSION >= 30000)}
-    {$DEFINE W5092:={$WARN 5092 OFF}} // Variable "$1" of a managed type does not seem to be initialized
-  {$ELSE}
-    {$DEFINE W5092:=}
-  {$IFEND}
-  {$POP}
+  {$DEFINE W4056:={$WARN 4056 OFF}} // Conversion between ordinals and pointers is not portable  
+  {$DEFINE W5057:={$WARN 5057 OFF}} // Local variable "$1" does not seem to be initialized
 {$ENDIF}
 
+{-------------------------------------------------------------------------------
+================================================================================
+                                    TMD4Hash
+================================================================================
+-------------------------------------------------------------------------------}
+{===============================================================================
+    TMD4Hash - calculation constants
+===============================================================================}
 const
-  ChunkSize       = 64;                           // 512 bits
-{$IFDEF LargeBuffers}
-  ChunksPerBuffer = 16384;                        // 1MiB BufferSize
-{$ELSE}
-  ChunksPerBuffer = 64;                           // 4KiB BufferSize
-{$ENDIF}
-  BufferSize      = ChunksPerBuffer * ChunkSize;  // size of read buffer
+  MD4_ROUND_CONSTS: array[0..2] of UInt32 = ($00000000, $5A827999, $6ED9EBA1);
 
-  ShiftCoefs: array[0..47] of UInt8 = (
-    3,  7, 11, 19,  3,  7, 11, 19,  3,  7, 11, 19,  3,  7, 11, 19,
-    3,  5,  9, 13,  3,  5,  9, 13,  3,  5,  9, 13,  3,  5,  9, 13,
-    3,  9, 11, 15,  3,  9, 11, 15,  3,  9, 11, 15,  3,  9, 11, 15);
-
-  RoundConsts: array[0..2] of UInt32 = ($0, $5A827999, $6ED9EBA1);
-
-  IndexConsts: array[0..47] of UInt8 = (
+  MD4_INDEX_CONSTS: array[0..47] of UInt8 = (
     0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
     0,  4,  8, 12,  1,  5,  9, 13,  2,  6, 10, 14,  3,  7, 11, 15,
     0,  8,  4, 12,  2, 10,  6, 14,  1,  9,  5, 13,  3, 11,  7, 15);
 
-type
-  TChunkBuffer = array[0..ChunkSize - 1] of UInt8;
-  PChunkBuffer = ^TChunkBuffer;
+  MD4_COEF_SHIFT: array[0..47] of UInt8 = (
+    3,  7, 11, 19,  3,  7, 11, 19,  3,  7, 11, 19,  3,  7, 11, 19,
+    3,  5,  9, 13,  3,  5,  9, 13,  3,  5,  9, 13,  3,  5,  9, 13,
+    3,  9, 11, 15,  3,  9, 11, 15,  3,  9, 11, 15,  3,  9, 11, 15);
 
-  TMD4Context_Internal = record
-    MessageHash:    TMD4Hash;
-    MessageLength:  UInt64;
-    TransferSize:   UInt32;
-    TransferBuffer: TChunkBuffer;
-  end;
-  PMD4Context_Internal = ^TMD4Context_Internal;
+{===============================================================================
+    TMD4Hash - class implementation
+===============================================================================}
+{-------------------------------------------------------------------------------
+    TMD4Hash - private methods
+-------------------------------------------------------------------------------}
 
-//==============================================================================
+Function TMD4Hash.GetMD4: TMD4;
+begin
+Result := MD4FromSys(fMD4);
+end;
 
-Function ChunkHash(Hash: TMD4Hash; const Chunk): TMD4Hash;
+{-------------------------------------------------------------------------------
+    TMD4Hash - protected methods
+-------------------------------------------------------------------------------}
+
+procedure TMD4Hash.ProcessBlock(const Block);
 var
+  Hash:           TMD4Sys;
+  BlockWords:     array[0..15] of UInt32 absolute Block;
   i:              Integer;
-  Temp:           UInt32;
   FuncResult:     UInt32;
   RoundConstant:  UInt32;
-  ChunkWords:     array[0..15] of UInt32 absolute Chunk;
+  Temp:           UInt32;
 begin
-Result := Hash;
-For i := 0 to 47 do
+Hash := fMD4;
+For i := 0 to 47 do // 48 cycles
   begin
     case i of
        0..15: begin
                 FuncResult := (Hash.PartB and Hash.PartC) or ((not Hash.PartB) and Hash.PartD);
-                RoundConstant := RoundConsts[0];
+                RoundConstant := MD4_ROUND_CONSTS[0];
               end;
       16..31: begin
                 FuncResult := (Hash.PartB and Hash.PartC) or (Hash.PartB and Hash.PartD) or (Hash.PartC and Hash.PartD);
-                RoundConstant := RoundConsts[1];
+                RoundConstant := MD4_ROUND_CONSTS[1];
               end;
     else
       {32..47:} FuncResult := Hash.PartB xor Hash.PartC xor Hash.PartD;
-                RoundConstant := RoundConsts[2];
+                RoundConstant := MD4_ROUND_CONSTS[2];
     end;
     Temp := Hash.PartD;
     Hash.PartD := Hash.PartC;
     Hash.PartC := Hash.PartB;
-    {$IFDEF OverflowCheck}{$Q-}{$ENDIF}
-    Hash.PartB := ROL(UInt32(Hash.PartA + FuncResult + ChunkWords[IndexConsts[i]] + RoundConstant), ShiftCoefs[i]);
-    {$IFDEF OverflowCheck}{$Q+}{$ENDIF}
+    {$IFDEF OverflowChecks}{$Q-}{$ENDIF}
+    Hash.PartB := ROL(UInt32(Hash.PartA + FuncResult + BlockWords[MD4_INDEX_CONSTS[i]] + RoundConstant),MD4_COEF_SHIFT[i]);
+    {$IFDEF OverflowChecks}{$Q+}{$ENDIF}
     Hash.PartA := Temp;
   end;
-{$IFDEF OverflowCheck}{$Q-}{$ENDIF}
-Result.PartA := UInt32(Result.PartA + Hash.PartA);
-Result.PartB := UInt32(Result.PartB + Hash.PartB);
-Result.PartC := UInt32(Result.PartC + Hash.PartC);
-Result.PartD := UInt32(Result.PartD + Hash.PartD);
-{$IFDEF OverflowCheck}{$Q+}{$ENDIF}
+{$IFDEF OverflowChecks}{$Q-}{$ENDIF}
+fMD4.PartA := UInt32(fMD4.PartA + Hash.PartA);
+fMD4.PartB := UInt32(fMD4.PartB + Hash.PartB);
+fMD4.PartC := UInt32(fMD4.PartC + Hash.PartC);
+fMD4.PartD := UInt32(fMD4.PartD + Hash.PartD);
+{$IFDEF OverflowChecks}{$Q+}{$ENDIF}
 end;
 
-//==============================================================================
+//------------------------------------------------------------------------------
 
-Function MD4toStr(Hash: TMD4Hash): String;
-var
-  HashArray:  array[0..15] of UInt8 absolute Hash;
-  i:          Integer;
+procedure TMD4Hash.ProcessFirst(const Block);
 begin
-Result := StringOfChar('0',32);
-For i := Low(HashArray) to High(HashArray) do
+inherited;
+ProcessBlock(Block);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TMD4Hash.ProcessLast;
+begin
+If (fBlockSize - fTempCount) >= (SizeOf(UInt64) + 1) then
   begin
-    Result[(i * 2) + 2] := IntToHex(HashArray[i] and $0F,1)[1];
-    Result[(i * 2) + 1] := IntToHex(HashArray[i] shr 4,1)[1];
-  end;
-end;
-
-//------------------------------------------------------------------------------
-
-{$IFDEF FPCDWM}{$PUSH}W5092{$ENDIF}
-Function StrToMD4(Str: String): TMD4Hash;
-var
-  HashArray:  array[0..15] of UInt8 absolute Result;
-  i:          Integer;
-begin
-If Length(Str) < 32 then
-  Str := StringOfChar('0',32 - Length(Str)) + Str
-else
-  If Length(Str) > 32 then
-    Str := Copy(Str,Length(Str) - 31,32);
-For i := 0 to 15 do
-  HashArray[i] := StrToInt('$' + Copy(Str,(i * 2) + 1,2));
-end;
-{$IFDEF FPCDWM}{$POP}{$ENDIF}
-
-//------------------------------------------------------------------------------
-
-Function TryStrToMD4(const Str: String; out Hash: TMD4Hash): Boolean;
-begin
-try
-  Hash := StrToMD4(Str);
-  Result := True;
-except
-  Result := False;
-end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function StrToMD4Def(const Str: String; Default: TMD4Hash): TMD4Hash;
-begin
-If not TryStrToMD4(Str,Result) then
-  Result := Default;
-end;
-
-//------------------------------------------------------------------------------
-
-Function CompareMD4(A,B: TMD4Hash): Integer;
-var
-  OverlayA: array[0..15] of UInt8 absolute A;
-  OverlayB: array[0..15] of UInt8 absolute B;
-  i:        Integer;
-begin
-Result := 0;
-For i := Low(OverlayA) to High(OverlayA) do
-  If OverlayA[i] > OverlayB[i] then
-    begin
-      Result := -1;
-      Break;
-    end
-  else If OverlayA[i] < OverlayB[i] then
-    begin
-      Result := 1;
-      Break;
-    end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function SameMD4(A,B: TMD4Hash): Boolean;
-begin
-Result := (A.PartA = B.PartA) and (A.PartB = B.PartB) and
-          (A.PartC = B.PartC) and (A.PartD = B.PartD);
-end;
-
-//------------------------------------------------------------------------------
-
-Function BinaryCorrectMD4(Hash: TMD4Hash): TMD4Hash;
-begin
-Result := Hash;
-end;
-
-//==============================================================================
-
-procedure BufferMD4(var Hash: TMD4Hash; const Buffer; Size: TMemSize);
-var
-  i:    TMemSize;
-  Buff: PChunkBuffer;
-begin
-If Size > 0 then
-  begin
-    If (Size mod ChunkSize) = 0 then
-      begin
-        Buff := @Buffer;
-        For i := 0 to Pred(Size div ChunkSize) do
-          begin
-            Hash := ChunkHash(Hash,Buff^);
-            Inc(Buff);
-          end;
-      end
-    else raise Exception.CreateFmt('BufferMD4: Buffer size is not divisible by %d.',[ChunkSize]);
-  end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TMemSize; MessageLength: UInt64): TMD4Hash;
-var
-  FullChunks:     TMemSize;
-  LastChunkSize:  TMemSize;
-  HelpChunks:     TMemSize;
-  HelpChunksBuff: Pointer;
-begin
-Result := Hash;
-FullChunks := Size div ChunkSize;
-If FullChunks > 0 then BufferMD4(Result,Buffer,FullChunks * ChunkSize);
-LastChunkSize := Size - (UInt64(FullChunks) * ChunkSize);
-HelpChunks := Ceil((LastChunkSize + SizeOf(UInt64) + 1) / ChunkSize);
-HelpChunksBuff := AllocMem(HelpChunks * ChunkSize);
-try
-{$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
-  Move(Pointer(PtrUInt(@Buffer) + (FullChunks * ChunkSize))^,HelpChunksBuff^,LastChunkSize);
-  PUInt8(PtrUInt(HelpChunksBuff) + LastChunkSize)^ := $80;
-  PUInt64(PtrUInt(HelpChunksBuff) + (UInt64(HelpChunks) * ChunkSize) - SizeOf(UInt64))^ := MessageLength;
-{$IFDEF FPCDWM}{$POP}{$ENDIF}
-  BufferMD4(Result,HelpChunksBuff^,HelpChunks * ChunkSize);
-finally
-  FreeMem(HelpChunksBuff,HelpChunks * ChunkSize);
-end;
-end;
-
-//------------------------------------------------------------------------------
-
-Function LastBufferMD4(Hash: TMD4Hash; const Buffer; Size: TMemSize): TMD4Hash;
-begin
-Result := LastBufferMD4(Hash,Buffer,Size,UInt64(Size) shl 3);
-end;
-
-//==============================================================================
-
-Function BufferMD4(const Buffer; Size: TMemSize): TMD4Hash;
-begin
-Result := LastBufferMD4(InitialMD4,Buffer,Size);
-end;
-
-//==============================================================================
-
-Function AnsiStringMD4(const Str: AnsiString): TMD4Hash;
-begin
-Result := BufferMD4(PAnsiChar(Str)^,Length(Str) * SizeOf(AnsiChar));
-end;
-
-//------------------------------------------------------------------------------
-
-Function WideStringMD4(const Str: WideString): TMD4Hash;
-begin
-Result := BufferMD4(PWideChar(Str)^,Length(Str) * SizeOf(WideChar));
-end;
-
-//------------------------------------------------------------------------------
-
-Function StringMD4(const Str: String): TMD4Hash;
-begin
-Result := BufferMD4(PChar(Str)^,Length(Str) * SizeOf(Char));
-end;
-
-//==============================================================================
-
-Function StreamMD4(Stream: TStream; Count: Int64 = -1): TMD4Hash;
-var
-  Buffer:         Pointer;
-  BytesRead:      Integer;
-  MessageLength:  UInt64;
-begin
-If Assigned(Stream) then
-  begin
-    If Count = 0 then
-      Count := Stream.Size - Stream.Position;
-    If Count < 0 then
-      begin
-        Stream.Position := 0;
-        Count := Stream.Size;
-      end;
-    MessageLength := UInt64(Count shl 3);
-    GetMem(Buffer,BufferSize);
-    try
-      Result := InitialMD4;
-      repeat
-        BytesRead := Stream.Read(Buffer^,Min(BufferSize,Count));
-        If BytesRead < BufferSize then
-          Result := LastBufferMD4(Result,Buffer^,BytesRead,MessageLength)
-        else
-          BufferMD4(Result,Buffer^,BytesRead);
-        Dec(Count,BytesRead);
-      until BytesRead < BufferSize;
-    finally
-      FreeMem(Buffer,BufferSize);
-    end;
+    // padding and length can fit
+  {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
+    FillChar(Pointer(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^,fBlockSize - fTempCount,0);
+    PUInt8(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^ := $80;
+    PUInt64(PtrUInt(fTempBlock) - SizeOf(UInt64) + PtrUInt(fBlockSize))^ := UInt64(fProcessedBytes) * 8;
+  {$IFDEF FPCDWM}{$POP}{$ENDIF}
+    ProcessBlock(fTempBlock^);
   end
-else raise Exception.Create('StreamMD4: Stream is not assigned.');
+else
+  begin
+    // padding and length cannot fit  
+    If fBlockSize > fTempCount then
+      begin
+      {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
+        FillChar(Pointer(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^,fBlockSize - fTempCount,0);
+        PUInt8(PtrUInt(fTempBlock) + PtrUInt(fTempCount))^ := $80;
+      {$IFDEF FPCDWM}{$POP}{$ENDIF}
+        ProcessBlock(fTempBlock^);
+        FillChar(fTempBlock^,fBlockSize,0);
+      {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
+        PUInt64(PtrUInt(fTempBlock) - SizeOf(UInt64) + PtrUInt(fBlockSize))^ := UInt64(fProcessedBytes) * 8;
+      {$IFDEF FPCDWM}{$POP}{$ENDIF}
+        ProcessBlock(fTempBlock^);        
+      end
+    else raise EMD4ProcessingError.CreateFmt('TMD4Hash.ProcessLast: Invalid data transfer (%d).',[fTempCount]);
+  end;
 end;
 
 //------------------------------------------------------------------------------
 
-Function FileMD4(const FileName: String): TMD4Hash;
-var
-  FileStream: TFileStream;
+procedure TMD4Hash.Initialize;
 begin
-FileStream := TFileStream.Create(StrToRTL(FileName), fmOpenRead or fmShareDenyWrite);
+fBlockSize := 64; // 512 bits
+inherited;
+fMD4 := MD4ToSys(ZeroMD4);
+end;
+
+{-------------------------------------------------------------------------------
+    TMD4Hash - public methods
+-------------------------------------------------------------------------------}
+
+class Function TMD4Hash.MD4ToSys(MD4: TMD4): TMD4Sys;
+var
+  Temp: TMD4Sys absolute MD4;
+begin
+Result := Temp;
+{$IFDEF ENDIAN_BIG}
+EndianSwap(Result.PartA);
+EndianSwap(Result.PartB);
+EndianSwap(Result.PartC);
+EndianSwap(Result.PartD);
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TMD4Hash.MD4FromSys(MD4: TMD4Sys): TMD4;
+var
+  Temp: TMD4Sys absolute Result;
+begin
+Temp := MD4;
+{$IFDEF ENDIAN_BIG}
+EndianSwap(Temp.PartA);
+EndianSwap(Temp.PartB);
+EndianSwap(Temp.PartC);
+EndianSwap(Temp.PartD);
+{$ENDIF}
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TMD4Hash.MD4ToLE(MD4: TMD4): TMD4;
+begin
+Result := MD4;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TMD4Hash.MD4ToBE(MD4: TMD4): TMD4;
+begin
+Result := MD4;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TMD4Hash.MD4FromLE(MD4: TMD4): TMD4;
+begin
+Result := MD4;
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TMD4Hash.MD4FromBE(MD4: TMD4): TMD4;
+begin
+Result := MD4;
+end;
+ 
+//------------------------------------------------------------------------------
+
+class Function TMD4Hash.HashSize: TMemSize;
+begin
+Result := SizeOf(TMD4);
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TMD4Hash.HashName: String;
+begin
+Result := 'MD4';
+end;
+
+//------------------------------------------------------------------------------
+
+class Function TMD4Hash.HashEndianness: THashEndianness;
+begin
+Result := heLittle;
+end;
+
+//------------------------------------------------------------------------------
+
+constructor TMD4Hash.CreateAndInitFrom(Hash: THashBase);
+begin
+CreateAndInit;
+If Hash is TMD4Hash then
+  fMD4 := TMD4Hash(Hash).MD4Sys
+else
+  raise EMD4IncompatibleClass.CreateFmt('TMD4Hash.CreateAndInitFrom: Incompatible class (%s).',[Hash.ClassName]);
+end;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+constructor TMD4Hash.CreateAndInitFrom(Hash: TMD4);
+begin
+CreateAndInit;
+fMD4 := MD4ToSys(Hash);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TMD4Hash.Init;
+begin
+inherited;
+fMD4 := MD4toSys(InitialMD4);
+end;
+
+//------------------------------------------------------------------------------
+
+Function TMD4Hash.Compare(Hash: THashBase): Integer;
+var
+  A,B:  TMD4;
+  i:    Integer;
+begin
+If Hash is TMD4Hash then
+  begin
+    Result := 0;
+    A := MD4FromSys(fMD4);
+    B := TMD4Hash(Hash).MD4;
+    For i := Low(A) to High(A) do
+      If A[i] > B[i] then
+        begin
+          Result := +1;
+          Break;
+        end
+      else If A[i] < B[i] then
+        begin
+          Result := -1;
+          Break;
+        end;
+  end
+else raise EMD4IncompatibleClass.CreateFmt('TMD4Hash.Compare: Incompatible class (%s).',[Hash.ClassName]);
+end;
+
+//------------------------------------------------------------------------------
+
+Function TMD4Hash.AsString: String;
+var
+  Temp: TMD4;
+  i:    Integer;
+begin
+Result := StringOfChar('0',HashSize * 2);
+Temp := MD4FromSys(fMD4);
+For i := Low(Temp) to High(Temp) do
+  begin
+    Result[(i * 2) + 2] := IntToHex(Temp[i] and $0F,1)[1];
+    Result[(i * 2) + 1] := IntToHex(Temp[i] shr 4,1)[1];
+  end;
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TMD4Hash.FromString(const Str: String);
+var
+  TempStr:  String;
+  i:        Integer;
+  MD4:      TMD4;
+begin
+If Length(Str) < Integer(HashSize * 2) then
+  TempStr := StringOfChar('0',Integer(HashSize * 2) - Length(Str)) + Str
+else If Length(Str) > Integer(HashSize * 2) then
+  TempStr := Copy(Str,Length(Str) - Pred(Integer(HashSize * 2)),Integer(HashSize * 2))
+else
+  TempStr := Str;
+For i := Low(MD4) to High(MD4) do
+  MD4[i] := UInt8(StrToInt('$' + Copy(TempStr,(i * 2) + 1,2)));
+fMD4 := MD4ToSys(MD4);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TMD4Hash.FromStringDef(const Str: String; const Default: TMD4);
+begin
+inherited FromStringDef(Str,Default);
+If not TryFromString(Str) then
+  fMD4 := MD4ToSys(Default);
+end;
+
+//------------------------------------------------------------------------------
+
+procedure TMD4Hash.SaveToStream(Stream: TStream; Endianness: THashEndianness = heDefault);
+var
+  Temp: TMD4;
+begin
+case Endianness of
+  heSystem: Temp := {$IFDEF ENDIAN_BIG}MD4ToBE{$ELSE}MD4ToLE{$ENDIF}(MD4FromSys(fMD4));
+  heLittle: Temp := MD4ToLE(MD4FromSys(fMD4));
+  heBig:    Temp := MD4ToBE(MD4FromSys(fMD4));
+else
+ {heDefault}
+  Temp := MD4FromSys(fMD4);
+end;
+Stream.WriteBuffer(Temp,SizeOf(TMD4));
+end;
+
+//------------------------------------------------------------------------------
+
+{$IFDEF FPCDWM}{$PUSH}W5057{$ENDIF}
+procedure TMD4Hash.LoadFromStream(Stream: TStream; Endianness: THashEndianness = heDefault);
+var
+  Temp: TMD4;
+begin
+Stream.ReadBuffer(Temp,SizeOf(TMD4));
+case Endianness of
+  heSystem: fMD4 := MD4ToSys({$IFDEF ENDIAN_BIG}MD4FromBE{$ELSE}MD4FromLE{$ENDIF}(Temp));
+  heLittle: fMD4 := MD4ToSys(MD4FromLE(Temp));
+  heBig:    fMD4 := MD4ToSys(MD4FromBE(Temp));
+else
+ {heDefault}
+  fMD4 := MD4ToSys(Temp);
+end;
+end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
+
+
+{===============================================================================
+    Backward compatibility functions
+===============================================================================}
+{-------------------------------------------------------------------------------
+    Backward compatibility functions - utility functions
+-------------------------------------------------------------------------------}
+
+Function MD4toStr(MD4: TMD4): String;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.CreateAndInitFrom(MD4);
 try
-  Result := StreamMD4(FileStream);
+  Result := Hash.AsString;
 finally
-  FileStream.Free;
+  Hash.Free;
 end;
 end;
 
-//==============================================================================
+//------------------------------------------------------------------------------
+
+Function StrToMD4(Str: String): TMD4;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.Create;
+try
+  Hash.FromString(Str);
+  Result := Hash.MD4;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function TryStrToMD4(const Str: String; out MD4: TMD4): Boolean;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.Create;
+try
+  Result := Hash.TryFromString(Str);
+  If Result then
+    MD4 := Hash.MD4;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function StrToMD4Def(const Str: String; Default: TMD4): TMD4;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.Create;
+try
+  Hash.FromStringDef(Str,Default);
+  Result := Hash.MD4;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function CompareMD4(A,B: TMD4): Integer;
+var
+  HashA:  TMD4Hash;
+  HashB:  TMD4Hash;
+begin
+HashA := TMD4Hash.CreateAndInitFrom(A);
+try
+  HashB := TMD4Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Compare(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function SameMD4(A,B: TMD4): Boolean;
+var
+  HashA:  TMD4Hash;
+  HashB:  TMD4Hash;
+begin
+HashA := TMD4Hash.CreateAndInitFrom(A);
+try
+  HashB := TMD4Hash.CreateAndInitFrom(B);
+  try
+    Result := HashA.Same(HashB);
+  finally
+    HashB.Free;
+  end;
+finally
+  HashA.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function BinaryCorrectMD4(MD4: TMD4): TMD4;
+begin
+Result := MD4;
+end;
+
+{-------------------------------------------------------------------------------
+    Backward compatibility functions - processing functions
+-------------------------------------------------------------------------------}
+
+procedure BufferMD4(var MD4: TMD4; const Buffer; Size: TMemSize);
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.CreateAndInitFrom(MD4);
+try
+  If Size > 0 then
+    begin
+      If (Size mod Hash.BlockSize) = 0 then
+        begin
+          Hash.Update(Buffer,Size);
+          MD4 := Hash.MD4;
+        end
+      else raise EMD4ProcessingError.CreateFmt('BufferMD4: Buffer size (%d) is not divisible by %d.',[Size,Hash.BlockSize]);
+    end;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function LastBufferMD4(MD4: TMD4; const Buffer; Size: TMemSize; MessageLength: UInt64): TMD4;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.CreateAndInitFrom(MD4);
+try
+  Hash.ProcessedBytes := (MessageLength shr 3) - Size;
+  Hash.Final(Buffer,Size);
+  Result := Hash.MD4;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function LastBufferMD4(MD4: TMD4; const Buffer; Size: TMemSize): TMD4;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.CreateAndInitFrom(MD4);
+try
+  Hash.Final(Buffer,Size);
+  Result := Hash.MD4;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function BufferMD4(const Buffer; Size: TMemSize): TMD4;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.Create;
+try
+  Hash.HashBuffer(Buffer,Size);
+  Result := Hash.MD4;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function AnsiStringMD4(const Str: AnsiString): TMD4;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.Create;
+try
+  Hash.HashAnsiString(Str);
+  Result := Hash.MD4;
+finally
+  Hash.Free;
+end;
+end;
+ 
+//------------------------------------------------------------------------------
+
+Function WideStringMD4(const Str: WideString): TMD4;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.Create;
+try
+  Hash.HashWideString(Str);
+  Result := Hash.MD4;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function StringMD4(const Str: String): TMD4;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.Create;
+try
+  Hash.HashString(Str);
+  Result := Hash.MD4;
+finally
+  Hash.Free;
+end;
+end;
+ 
+//------------------------------------------------------------------------------
+
+Function StreamMD4(Stream: TStream; Count: Int64 = -1): TMD4;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.Create;
+try
+  Hash.HashStream(Stream,Count);
+  Result := Hash.MD4;
+finally
+  Hash.Free;
+end;
+end;
+
+//------------------------------------------------------------------------------
+
+Function FileMD4(const FileName: String): TMD4;
+var
+  Hash: TMD4Hash;
+begin
+Hash := TMD4Hash.Create;
+try
+  Hash.HashFile(FileName);
+  Result := Hash.MD4;
+finally
+  Hash.Free;
+end;
+end;
+
+{-------------------------------------------------------------------------------
+    Backward compatibility functions - context functions
+-------------------------------------------------------------------------------}
 
 Function MD4_Init: TMD4Context;
+var
+  Temp: TMD4Hash;
 begin
-Result := AllocMem(SizeOf(TMD4Context_Internal));
-with PMD4Context_Internal(Result)^ do
-  begin
-    MessageHash := InitialMD4;
-    MessageLength := 0;
-    TransferSize := 0;
-  end;
+Temp := TMD4Hash.CreateAndInit;
+Result := TMD4Context(Temp);
 end;
 
 //------------------------------------------------------------------------------
 
 procedure MD4_Update(Context: TMD4Context; const Buffer; Size: TMemSize);
-var
-  FullChunks:     TMemSize;
-  RemainingSize:  TMemSize;
 begin
-with PMD4Context_Internal(Context)^ do
-  begin
-    If TransferSize > 0 then
-      begin
-        If Size >= (ChunkSize - TransferSize) then
-          begin
-            Inc(MessageLength,UInt64(ChunkSize - TransferSize) shl 3);
-            Move(Buffer,TransferBuffer[TransferSize],ChunkSize - TransferSize);
-            BufferMD4(MessageHash,TransferBuffer,ChunkSize);
-            RemainingSize := Size - (ChunkSize - TransferSize);
-            TransferSize := 0;
-          {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
-            MD4_Update(Context,Pointer(PtrUInt(@Buffer) + (Size - RemainingSize))^,RemainingSize);
-          {$IFDEF FPCDWM}{$POP}{$ENDIF}
-          end
-        else
-          begin
-            Inc(MessageLength,UInt64(Size) shl 3);
-            Move(Buffer,TransferBuffer[TransferSize],Size);
-            Inc(TransferSize,Size);
-          end;  
-      end
-    else
-      begin
-        Inc(MessageLength,UInt64(Size) shl 3);
-        FullChunks := Size div ChunkSize;
-        BufferMD4(MessageHash,Buffer,FullChunks * ChunkSize);
-        If TMemSize(FullChunks * ChunkSize) < Size then
-          begin
-            TransferSize := Size - (UInt64(FullChunks) * ChunkSize);
-          {$IFDEF FPCDWM}{$PUSH}W4055 W4056{$ENDIF}
-            Move(Pointer(PtrUInt(@Buffer) + (Size - TransferSize))^,TransferBuffer,TransferSize);
-          {$IFDEF FPCDWM}{$POP}{$ENDIF}
-          end;
-      end;
-  end;
+TMD4Hash(Context).Update(Buffer,Size);
 end;
 
 //------------------------------------------------------------------------------
 
-Function MD4_Final(var Context: TMD4Context; const Buffer; Size: TMemSize): TMD4Hash;
+Function MD4_Final(var Context: TMD4Context; const Buffer; Size: TMemSize): TMD4;
 begin
 MD4_Update(Context,Buffer,Size);
 Result := MD4_Final(Context);
@@ -491,19 +822,26 @@ end;
 
 //------------------------------------------------------------------------------
 
-Function MD4_Final(var Context: TMD4Context): TMD4Hash;
+Function MD4_Final(var Context: TMD4Context): TMD4;
 begin
-with PMD4Context_Internal(Context)^ do
-  Result := LastBufferMD4(MessageHash,TransferBuffer,TransferSize,MessageLength);
-FreeMem(Context,SizeOf(TMD4Context_Internal));
-Context := nil;
+TMD4Hash(Context).Final;
+Result := TMD4Hash(Context).MD4;
+FreeAndNil(TMD4Hash(Context));
 end;
 
 //------------------------------------------------------------------------------
 
-Function MD4_Hash(const Buffer; Size: TMemSize): TMD4Hash;
+Function MD4_Hash(const Buffer; Size: TMemSize): TMD4;
+var
+  Hash: TMD4Hash;
 begin
-Result := LastBufferMD4(InitialMD4,Buffer,Size);
+Hash := TMD4Hash.Create;
+try
+  Hash.HashBuffer(Buffer,Size);
+  Result := Hash.MD4;
+finally
+  Hash.Free;
+end;
 end;
 
 end.
