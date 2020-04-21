@@ -14,7 +14,7 @@
 
   Version 1.4 (2020-04-20)
 
-  Last change 2020-04-20
+  Last change 2020-04-22
 
   ©2015-2020 František Milt
 
@@ -406,7 +406,7 @@ end;
 
 constructor TMD4Hash.CreateAndInitFrom(Hash: THashBase);
 begin
-CreateAndInit;
+inherited CreateAndInitFrom(Hash);
 If Hash is TMD4Hash then
   fMD4 := TMD4Hash(Hash).MD4Sys
 else
