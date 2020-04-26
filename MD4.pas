@@ -66,9 +66,9 @@ uses
     Common types and constants
 ===============================================================================}
 {
-  Type TMD4 contains individual bytes of the checksum in the same order as they
-  are presented in its textual representation.
-  
+  Bytes in type TMD4 are always ordered from most significant byte to least
+  significant byte (big endian).
+
   Type TMD4Sys has no such guarantee and its internal structure depends on
   current implementation.
 
