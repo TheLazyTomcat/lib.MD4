@@ -330,10 +330,10 @@ var
 begin
 Result := Temp;
 {$IFDEF ENDIAN_BIG}
-EndianSwap(Result.PartA);
-EndianSwap(Result.PartB);
-EndianSwap(Result.PartC);
-EndianSwap(Result.PartD);
+EndianSwapValue(Result.PartA);
+EndianSwapValue(Result.PartB);
+EndianSwapValue(Result.PartC);
+EndianSwapValue(Result.PartD);
 {$ENDIF}
 end;
 
@@ -345,10 +345,10 @@ var
 begin
 Temp := MD4;
 {$IFDEF ENDIAN_BIG}
-EndianSwap(Temp.PartA);
-EndianSwap(Temp.PartB);
-EndianSwap(Temp.PartC);
-EndianSwap(Temp.PartD);
+EndianSwapValue(Temp.PartA);
+EndianSwapValue(Temp.PartB);
+EndianSwapValue(Temp.PartC);
+EndianSwapValue(Temp.PartD);
 {$ENDIF}
 end;
 
