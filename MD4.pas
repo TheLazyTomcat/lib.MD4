@@ -14,7 +14,7 @@
 
   Version 1.4 (2020-04-20)
 
-  Last change 2020-04-22
+  Last change 2020-04-28
 
   ©2015-2020 František Milt
 
@@ -257,7 +257,8 @@ For i := 0 to 47 do // 48 cycles
     Hash.PartD := Hash.PartC;
     Hash.PartC := Hash.PartB;
     {$IFDEF OverflowChecks}{$Q-}{$ENDIF}
-    Hash.PartB := ROL(UInt32(Hash.PartA + FuncResult + BlockWords[MD4_INDEX_CONSTS[i]] + RoundConstant),MD4_COEF_SHIFT[i]);
+    Hash.PartB := ROL(UInt32(Hash.PartA + FuncResult + RoundConstant +
+      {$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(BlockWords[MD4_INDEX_CONSTS[i]])),MD4_COEF_SHIFT[i]);
     {$IFDEF OverflowChecks}{$Q+}{$ENDIF}
     Hash.PartA := Temp;
   end;
