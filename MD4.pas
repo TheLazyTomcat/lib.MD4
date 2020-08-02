@@ -14,7 +14,7 @@
 
   Version 1.4.1 (2020-07-13)
 
-  Last change 2020-07-13
+  Last change 2020-08-02
 
   ©2015-2020 František Milt
 
@@ -51,6 +51,7 @@ unit MD4;
   {$DEFINE FPC_DisableWarns}
   {$MACRO ON}
 {$ENDIF}
+{$H+}
 
 {$IFOPT Q+}
   {$DEFINE OverflowChecks}
