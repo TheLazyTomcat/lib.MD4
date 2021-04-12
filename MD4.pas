@@ -14,9 +14,9 @@
 
   Version 1.4.1 (2020-07-13)
 
-  Last change 2020-08-02
+  Last change 2021-04-12
 
-  ©2015-2020 František Milt
+  ©2015-2021 František Milt
 
   Contacts:
     František Milt: frantisek.milt@gmail.com
@@ -230,6 +230,7 @@ end;
     TMD4Hash - protected methods
 -------------------------------------------------------------------------------}
 
+{$IFDEF OverflowChecks}{$Q-}{$ENDIF}
 procedure TMD4Hash.ProcessBlock(const Block);
 var
   Hash:           TMD4Sys;
@@ -258,19 +259,16 @@ For i := 0 to 47 do // 48 cycles
     Temp := Hash.PartD;
     Hash.PartD := Hash.PartC;
     Hash.PartC := Hash.PartB;
-    {$IFDEF OverflowChecks}{$Q-}{$ENDIF}
     Hash.PartB := ROL(UInt32(Hash.PartA + FuncResult + RoundConstant +
       {$IFDEF ENDIAN_BIG}EndianSwap{$ENDIF}(BlockWords[MD4_INDEX_CONSTS[i]])),MD4_COEF_SHIFT[i]);
-    {$IFDEF OverflowChecks}{$Q+}{$ENDIF}
     Hash.PartA := Temp;
   end;
-{$IFDEF OverflowChecks}{$Q-}{$ENDIF}
 fMD4.PartA := UInt32(fMD4.PartA + Hash.PartA);
 fMD4.PartB := UInt32(fMD4.PartB + Hash.PartB);
 fMD4.PartC := UInt32(fMD4.PartC + Hash.PartC);
 fMD4.PartD := UInt32(fMD4.PartD + Hash.PartD);
-{$IFDEF OverflowChecks}{$Q+}{$ENDIF}
 end;
+{$IFDEF OverflowChecks}{$Q+}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
