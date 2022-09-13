@@ -14,9 +14,9 @@
 
   Version 1.4.1 (2020-07-13)
 
-  Last change 2021-04-12
+  Last change 2022-09-13
 
-  ©2015-2021 František Milt
+  ©2015-2022 František Milt
 
   Contacts:
     František Milt: frantisek.milt@gmail.com
@@ -109,10 +109,9 @@ type
 ===============================================================================}
 type
   TMD4Hash = class(TBlockHash)
-  private
-    fMD4: TMD4Sys;
-    Function GetMD4: TMD4;
   protected
+    fMD4: TMD4Sys;
+    Function GetMD4: TMD4; virtual;
     procedure ProcessBlock(const Block); override;
     procedure ProcessFirst(const Block); override;
     procedure ProcessLast; override;
@@ -218,7 +217,7 @@ const
     TMD4Hash - class implementation
 ===============================================================================}
 {-------------------------------------------------------------------------------
-    TMD4Hash - private methods
+    TMD4Hash - protected methods
 -------------------------------------------------------------------------------}
 
 Function TMD4Hash.GetMD4: TMD4;
@@ -226,9 +225,7 @@ begin
 Result := MD4FromSys(fMD4);
 end;
 
-{-------------------------------------------------------------------------------
-    TMD4Hash - protected methods
--------------------------------------------------------------------------------}
+//------------------------------------------------------------------------------
 
 {$IFDEF OverflowChecks}{$Q-}{$ENDIF}
 procedure TMD4Hash.ProcessBlock(const Block);
