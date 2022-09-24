@@ -14,7 +14,7 @@
 
   Version 1.4.1 (2020-07-13)
 
-  Last change 2022-09-13
+  Last change 2022-09-24
 
   ©2015-2022 František Milt
 
@@ -47,7 +47,7 @@
 unit MD4;
 
 {$IFDEF FPC}
-  {$MODE Delphi}
+  {$MODE ObjFPC}
   {$DEFINE FPC_DisableWarns}
   {$MACRO ON}
 {$ENDIF}
@@ -485,7 +485,7 @@ procedure TMD4Hash.FromString(const Str: String);
 var
   TempStr:  String;
   i:        Integer;
-  MD4:      TMD4;
+  TempMD4:  TMD4;
 begin
 If Length(Str) < Integer(HashSize * 2) then
   TempStr := StringOfChar('0',Integer(HashSize * 2) - Length(Str)) + Str
@@ -493,9 +493,9 @@ else If Length(Str) > Integer(HashSize * 2) then
   TempStr := Copy(Str,Length(Str) - Pred(Integer(HashSize * 2)),Integer(HashSize * 2))
 else
   TempStr := Str;
-For i := Low(MD4) to High(MD4) do
-  MD4[i] := UInt8(StrToInt('$' + Copy(TempStr,(i * 2) + 1,2)));
-fMD4 := MD4ToSys(MD4);
+For i := Low(TempMD4) to High(TempMD4) do
+  TempMD4[i] := UInt8(StrToInt('$' + Copy(TempStr,(i * 2) + 1,2)));
+fMD4 := MD4ToSys(TempMD4);
 end;
 
 //------------------------------------------------------------------------------
